@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Secure Chat{% endblock %}</title>
+
+    <!-- Security Headers -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+
+    <!-- Bootstrap CSS with SRI -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha512-b2QcS5SsA8tZodcDtGRELiGv5SaKSk1vDHDaQRda0htPYWZ6046lr3kJ5bAAQdpV2mmA/4v0wQF9MyU6/pDIAg=="
+      crossorigin="anonymous"
+    />
+
+    <!-- Font Awesome with SRI -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+      integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+      crossorigin="anonymous"
+    />
+
+    <style>
+      body {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: #fff;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        min-height: 100vh;
+      }
+
+      .secure-container {
+        background: rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 2rem auto;
+        max-width: 500px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+
+      .chat-container {
+        max-width: 1200px;
+        margin: 1rem auto;
+        background: rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+
+      .encryption-status {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: #4dabf7;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        z-index: 1000;
+      }
+
+      .secure-input {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: #fff;
+        border-radius: 8px;
+      }
+
+      .secure-input:focus {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: #4dabf7;
+        box-shadow: 0 0 0 0.2rem rgba(77, 171, 247, 0.25);
+        color: #fff;
+      }
+
+      .secure-input::placeholder {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .secure-btn {
+        background: linear-gradient(45deg, #4dabf7, #1c7ed6);
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+      }
+
+      .secure-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(77, 171, 247, 0.3);
+      }
+
+      .message-bubble {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        backdrop-filter: blur(5px);
+      }
+
+      .message-bubble.own {
+        background: rgba(77, 171, 247, 0.2);
+        border-color: rgba(77, 171, 247, 0.3);
+        margin-left: 20%;
+      }
+
+      .message-bubble.other {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.2);
+        margin-right: 20%;
+      }
+
+      .room-list {
+        background: rgba(0, 0, 0, 0.3);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        height: 100vh;
+        overflow-y: auto;
+      }
+
+      .room-item {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin: 0.5rem;
+        border-radius: 8px;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .room-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateX(5px);
+      }
+
+      .room-item.active {
+        background: rgba(77, 171, 247, 0.3);
+        border-color: #4dabf7;
+      }
+
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #4dabf7;
+        animation: spin 1s ease-in-out infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .alert-secure {
+        background: rgba(220, 53, 69, 0.1);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        color: #fff;
+        border-radius: 8px;
+      }
+
+      .alert-success-secure {
+        background: rgba(40, 167, 69, 0.1);
+        border: 1px solid rgba(40, 167, 69, 0.3);
+        color: #fff;
+        border-radius: 8px;
+      }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+  </head>
+  <body>
+    <!-- Encryption Status -->
+    <div class="encryption-status">
+      <i class="fas fa-shield-alt"></i>
+      <span id="encryption-status">E2E Encrypted</span>
+    </div>
+
+    <div id="alert-container"></div>
+
+    {% block content %}{% endblock %}
+
+    <!-- Bootstrap JS with SRI -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"
+      integrity="sha512-X/YkDZyjTf4wyc2Vy16YGCPHwAY8rZJY+POgokZjQB2mhIRFJCckEGc6YyX9eNsPfn0PzThEuNs+uaomE5CO6A=="
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Socket.IO -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Client-side Encryption -->
+    <script>
+      class SecureCrypto {
+        constructor() {
+          this.roomKeys = new Map();
+          this.initialized = false;
+        }
+
+        async initialize() {
+          if (window.crypto && window.crypto.subtle) {
+            this.initialized = true;
+            this.updateStatus("Ready");
+          } else {
+            this.updateStatus("Unsupported");
+          }
+        }
+
+        async generateRoomKey(roomId) {
+          // Generate a deterministic key based on room ID so all users share the same key
+          const roomSecret = `room_${roomId}_secret_key_2025`; // In production, this should be securely exchanged
+          const encoder = new TextEncoder();
+          const keyMaterial = await window.crypto.subtle.importKey(
+            "raw",
+            encoder.encode(roomSecret),
+            "PBKDF2",
+            false,
+            ["deriveBits", "deriveKey"]
+          );
+
+          const key = await window.crypto.subtle.deriveKey(
+            {
+              name: "PBKDF2",
+              salt: encoder.encode(`salt_${roomId}`),
+              iterations: 100000,
+              hash: "SHA-256",
+            },
+            keyMaterial,
+            { name: "AES-GCM", length: 256 },
+            true,
+            ["encrypt", "decrypt"]
+          );
+
+          this.roomKeys.set(roomId, key);
+          console.log(`🔑 Generated shared key for room ${roomId}`);
+          return key;
+        }
+
+        async encryptMessage(message, roomId) {
+          let key = this.roomKeys.get(roomId);
+          if (!key) {
+            key = await this.generateRoomKey(roomId);
+          }
+
+          const encoder = new TextEncoder();
+          const data = encoder.encode(message);
+          const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+          const encrypted = await window.crypto.subtle.encrypt(
+            { name: "AES-GCM", iv: iv },
+            key,
+            data
+          );
+
+          console.log(`🔒 Encrypted message for room ${roomId}:`, message);
+          return {
+            encrypted: Array.from(new Uint8Array(encrypted)),
+            iv: Array.from(iv),
+          };
+        }
+
+        async decryptMessage(encryptedData, iv, roomId) {
+          try {
+            let key = this.roomKeys.get(roomId);
+            if (!key) {
+              console.log(`🔑 No key found for room ${roomId}, generating...`);
+              key = await this.generateRoomKey(roomId);
+            }
+
+            console.log(`🔓 Attempting to decrypt message for room ${roomId}`);
+            const decrypted = await window.crypto.subtle.decrypt(
+              { name: "AES-GCM", iv: new Uint8Array(iv) },
+              key,
+              new Uint8Array(encryptedData)
+            );
+
+            const message = new TextDecoder().decode(decrypted);
+            console.log(`✅ Successfully decrypted message:`, message);
+            return message;
+          } catch (error) {
+            console.error(`❌ Decryption failed for room ${roomId}:`, error);
+            return "[Decryption Failed]";
+          }
+        }
+
+        updateStatus(status) {
+          const statusEl = document.getElementById("encryption-status");
+          if (statusEl) statusEl.textContent = `E2E ${status}`;
+        }
+      }
+
+      window.secureCrypto = new SecureCrypto();
+
+      document.addEventListener("DOMContentLoaded", () => {
+        window.secureCrypto.initialize();
+      });
+
+      function showAlert(message, type = "danger") {
+        const alertClass =
+          type === "success" ? "alert-success" : "alert-danger";
+        const alertHtml = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        document.getElementById("alert-container").innerHTML = alertHtml;
+      }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>

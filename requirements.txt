@@ -1,0 +1,12 @@
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+Flask-SQLAlchemy==3.0.5
+Flask-Bcrypt==1.0.1
+Flask-CORS==4.0.0
+cryptography==41.0.7
+python-socketio==5.9.0
+eventlet==0.33.3
+python-dotenv==1.0.0
+secrets==1.0
+hashlib==20081119
+base64==1.0 

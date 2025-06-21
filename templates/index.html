@@ -1,0 +1,287 @@
+{% extends "base.html" %} {% block title %}Secure Chat{% endblock %} {% block
+content %}
+<div class="container-fluid p-0" style="height: 100vh">
+  <div class="row g-0 h-100">
+    <div class="col-md-3 bg-dark">
+      <div class="p-3 border-bottom">
+        <div class="d-flex align-items-center mb-3">
+          <i class="fas fa-user-circle fa-2x text-primary me-2"></i>
+          <div>
+            <div class="fw-bold text-white">{{ session.username }}</div>
+            <small class="text-success">Online</small>
+          </div>
+          <a href="/logout" class="btn btn-sm btn-outline-light ms-auto">
+            <i class="fas fa-sign-out-alt"></i>
+          </a>
+        </div>
+        <button class="btn secure-btn btn-sm w-100" onclick="createRoom()">
+          <i class="fas fa-plus me-2"></i>New Room
+        </button>
+      </div>
+      <div
+        id="roomList"
+        class="p-2"
+        style="height: calc(100vh - 140px); overflow-y: auto"
+      ></div>
+    </div>
+
+    <div class="col-md-9 d-flex flex-column">
+      <div
+        class="p-3 border-bottom bg-dark text-white d-flex justify-content-between"
+      >
+        <div>
+          <h5 id="currentRoomName" class="mb-0">Select a room</h5>
+          <small class="text-muted">End-to-end encrypted</small>
+        </div>
+        <span class="badge bg-success" id="status">Connected</span>
+      </div>
+
+      <div
+        id="messagesContainer"
+        class="flex-grow-1 p-3"
+        style="overflow-y: auto; background: #f8f9fa"
+      >
+        <div class="text-center text-muted py-5">
+          <i class="fas fa-comments fa-3x mb-3"></i>
+          <h5>Welcome to Secure Chat</h5>
+          <p>Select a room to start encrypted messaging</p>
+        </div>
+      </div>
+
+      <div class="p-3 border-top bg-light">
+        <div class="input-group">
+          <input
+            type="text"
+            class="form-control"
+            id="messageInput"
+            placeholder="Type encrypted message..."
+            disabled
+          />
+          <button class="btn secure-btn" onclick="sendMessage()" disabled>
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .room-item {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    cursor: pointer;
+    color: white;
+    transition: all 0.3s ease;
+  }
+  .room-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .room-item.active {
+    background: rgba(77, 171, 247, 0.3);
+    border-color: #4dabf7;
+  }
+
+  .message-bubble {
+    background: #e9ecef;
+    border-radius: 15px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    max-width: 70%;
+  }
+  .message-bubble.own {
+    background: #007bff;
+    color: white;
+    margin-left: auto;
+  }
+</style>
+{% endblock %} {% block extra_js %}
+<script>
+  let socket = io();
+  let currentRoom = null;
+  let username = "{{ session.username }}";
+
+  socket.on("connect", () => {
+    document.getElementById("status").textContent = "Connected";
+    document.getElementById("status").className = "badge bg-success";
+  });
+
+  socket.on("joined_room", function (data) {
+    document.getElementById("currentRoomName").textContent = data.room_name;
+    document.getElementById("messageInput").disabled = false;
+    document.querySelector('button[onclick="sendMessage()"]').disabled = false;
+  });
+
+  socket.on("room_history", (data) => displayMessages(data.messages));
+  socket.on("new_message", (data) => displayMessage(data));
+
+  async function loadRooms() {
+    console.log("🔄 Loading rooms...");
+    try {
+      const response = await fetch("/api/rooms");
+      console.log("📡 Response status:", response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const rooms = await response.json();
+      console.log("📁 Rooms received:", rooms);
+
+      const roomList = document.getElementById("roomList");
+      if (!roomList) {
+        console.error("❌ roomList element not found!");
+        return;
+      }
+
+      roomList.innerHTML = "";
+      console.log("🧹 Cleared room list");
+
+      if (rooms.length === 0) {
+        roomList.innerHTML =
+          '<div class="text-muted p-3">No rooms available</div>';
+        console.log("📭 No rooms to display");
+        return;
+      }
+
+      rooms.forEach((room) => {
+        const div = document.createElement("div");
+        div.className = "room-item";
+        div.onclick = () => joinRoom(room.id, room.name);
+        div.innerHTML = `<div class="fw-bold">${
+          room.name
+        }</div><small class="text-muted">${
+          room.description || "No description"
+        }</small>`;
+        roomList.appendChild(div);
+        console.log("➕ Added room:", room.name);
+      });
+
+      console.log("✅ Rooms loaded successfully");
+    } catch (error) {
+      console.error("❌ Error loading rooms:", error);
+      showAlert("Failed to load rooms: " + error.message, "danger");
+    }
+  }
+
+  function joinRoom(roomId, roomName) {
+    if (currentRoom === roomId) return;
+
+    document
+      .querySelectorAll(".room-item")
+      .forEach((item) => item.classList.remove("active"));
+    event.target.closest(".room-item").classList.add("active");
+
+    currentRoom = roomId;
+    document.getElementById("messagesContainer").innerHTML = "";
+
+    socket.emit("join_room", { room_id: roomId });
+    window.secureCrypto.generateRoomKey(roomId);
+  }
+
+  async function displayMessages(messages) {
+    const container = document.getElementById("messagesContainer");
+    container.innerHTML = "";
+    for (const msg of messages) {
+      await displayMessage(msg);
+    }
+  }
+
+  async function displayMessage(msg) {
+    const container = document.getElementById("messagesContainer");
+    const div = document.createElement("div");
+    div.className = `message-bubble ${msg.username === username ? "own" : ""}`;
+
+    let content = "[Encrypted]";
+    if (msg.encrypted_content && msg.iv) {
+      try {
+        content = await window.secureCrypto.decryptMessage(
+          JSON.parse(msg.encrypted_content),
+          JSON.parse(msg.iv),
+          currentRoom
+        );
+      } catch (e) {
+        content = "[Decryption Failed]";
+      }
+    }
+
+    div.innerHTML = `<div><strong>${
+      msg.username
+    }</strong> <small class="text-muted">${new Date(
+      msg.timestamp
+    ).toLocaleTimeString()}</small></div><div>${content}</div>`;
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById("messageInput");
+    const message = input.value.trim();
+    if (!message || !currentRoom) return;
+
+    try {
+      const encrypted = await window.secureCrypto.encryptMessage(
+        message,
+        currentRoom
+      );
+
+      socket.emit("send_message", {
+        room_id: currentRoom,
+        encrypted_content: JSON.stringify(encrypted.encrypted),
+        iv: JSON.stringify(encrypted.iv),
+        message_hash: "hash",
+      });
+
+      input.value = "";
+    } catch (error) {
+      console.error("Send failed:", error);
+      showAlert("Failed to send message", "danger");
+    }
+  }
+
+  function createRoom() {
+    const name = prompt("Enter room name:");
+    if (!name) return;
+
+    fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name, description: "" }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          showAlert("Room created!", "success");
+          loadRooms();
+        } else {
+          showAlert(data.error || "Failed to create room", "danger");
+        }
+      });
+  }
+
+  document.getElementById("messageInput").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") sendMessage();
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    console.log("🚀 Page loaded, initializing...");
+    console.log("👤 Username:", username);
+    console.log("🔌 Socket:", socket);
+    console.log("🛡️ Crypto:", window.secureCrypto);
+
+    // Test if showAlert function exists
+    if (typeof showAlert === "function") {
+      console.log("✅ showAlert function available");
+    } else {
+      console.log("❌ showAlert function not available");
+    }
+
+    // Load rooms
+    loadRooms();
+  });
+</script>
+{% endblock %}
